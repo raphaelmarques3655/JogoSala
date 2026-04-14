@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Esconde-Esconde Multiplayer</title>
+  <style>
+    body { margin:0; padding:0; background:#0a1a0f; overflow:hidden; font-family:Arial; color:white; }
+    canvas { display:block; position:absolute; top:0; left:0; }
+
+    #startScreen {
+      position:absolute; top:0; left:0; width:100%; height:100%;
+      background:rgba(10, 30, 20, 0.97); display:flex; flex-direction:column;
+      align-items:center; justify-content:center; z-index:300;
+    }
+    h1 { font-size:52px; color:#ffdd44; margin-bottom:10px; }
+    input { padding:16px; font-size:24px; width:340px; margin:20px 0; border-radius:10px; text-align:center; }
+    button { padding:16px 60px; font-size:24px; background:#ff4444; color:white; border:none; border-radius:10px; cursor:pointer; }
+    button:hover { background:#ff6666; }
+  </style>
+</head>
+<body>
+
+  <div id="startScreen">
+    <h1>🙈 Esconde-Esconde</h1>
+    <p>Digite seu nome:</p>
+    <input type="text" id="nicknameInput" placeholder="Seu nome" maxlength="15">
+    <button onclick="startGame()">JOGAR</button>
+  </div>
+
+  <div id="hud" style="display:none; position:absolute; top:15px; left:15px; background:rgba(0,0,0,0.75); padding:12px 20px; border-radius:10px; z-index:100; font-size:18px;">
+    <strong>Esconde-Esconde</strong><br>
+    Você é: <span id="role" style="font-weight:bold; color:#44ff88;">Fugitivo</span>
+  </div>
+
+  <canvas id="game"></canvas>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="client.js"></script>
+</body>
+</html>

@@ -4,7 +4,7 @@ const ctx = canvas.getContext('2d');
 
 let players = {};
 let myId = null;
-let currentTagger = null;
+let currentTagger = null; // Polícia
 let gameStarted = false;
 let myNickname = "Jogador";
 let keys = {};
@@ -12,61 +12,50 @@ let keys = {};
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 
-const MAP_WIDTH = 3000;
-const MAP_HEIGHT = 2000;
+const MAP_WIDTH = 3400;
+const MAP_HEIGHT = 2400;
 
-const hideSpots = [
-  {x: 400, y: 300, w: 280, h: 200, type: 'grass'},
-  {x: 1200, y: 600, w: 250, h: 180, type: 'grass'},
-  {x: 2100, y: 400, w: 300, h: 220, type: 'grass'},
-  {x: 800, y: 1300, w: 220, h: 190, type: 'grass'},
-  {x: 600, y: 800, w: 140, h: 120, type: 'house'},
-  {x: 1600, y: 1100, w: 160, h: 130, type: 'house'},
-  {x: 2400, y: 800, w: 150, h: 140, type: 'house'},
-  {x: 1900, y: 300, w: 130, h: 110, type: 'house'}
+const obstacles = [
+  {x: 250, y: 180, w: 200, h: 320},
+  {x: 750, y: 120, w: 170, h: 380},
+  {x: 1350, y: 250, w: 220, h: 280},
+  {x: 2150, y: 150, w: 190, h: 340},
+  {x: 2800, y: 300, w: 180, h: 260},
+  {x: 500, y: 850, w: 150, h: 170},
+  {x: 1100, y: 1050, w: 140, h: 160},
+  {x: 1850, y: 950, w: 160, h: 180},
+  {x: 2550, y: 1200, w: 145, h: 155},
+  {x: 380, y: 1450, w: 240, h: 200}
 ];
 
 function startGame() {
   myNickname = document.getElementById('nicknameInput').value.trim() || "Jogador";
-  
   document.getElementById('startScreen').style.display = 'none';
   document.getElementById('hud').style.display = 'block';
-  
   gameStarted = true;
-  
-  // Envia o nome assim que clicar em Jogar
   socket.emit('setNickname', myNickname);
 }
 
-socket.on('connect', () => {
-  myId = socket.id;
-});
+socket.on('connect', () => { myId = socket.id; });
 
 socket.on('currentState', (data) => {
   players = data.players || {};
   currentTagger = data.currentTagger;
 });
 
-socket.on('newPlayer', (id, player) => {
-  players[id] = player;
+socket.on('newPlayer', (id, player) => { players[id] = player; });
+socket.on('playerMoved', (id, player) => { 
+  if (players[id]) players[id] = player; 
 });
-
-socket.on('playerMoved', (id, player) => {
-  if (players[id]) players[id] = player;
-});
-
-socket.on('playerDisconnected', (id) => {
-  delete players[id];
-});
+socket.on('playerDisconnected', (id) => { delete players[id]; });
 
 socket.on('newTagger', (id) => {
   currentTagger = id;
   const roleEl = document.getElementById('role');
-  roleEl.textContent = (id === myId) ? "PEGADOR!" : "Fugitivo";
-  roleEl.style.color = (id === myId) ? "#ff4444" : "#44ff88";
+  roleEl.textContent = (id === myId) ? "POLÍCIA 👮" : "LADRÃO";
+  roleEl.style.color = (id === myId) ? "#00ccff" : "#ffaa00";
 });
 
-// Teclado WASD
 window.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
 window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
 
@@ -74,17 +63,37 @@ function update() {
   if (!gameStarted || !players[myId]) return;
 
   const p = players[myId];
-  const speed = (currentTagger === myId) ? 7.2 : 6.3;
+  
+  // Velocidade diminuída (como você pediu)
+  const speed = (currentTagger === myId) ? 5.2 : 4.8;   // Polícia um pouco mais rápida
 
   if (keys['w'] || keys['arrowup']) p.y -= speed;
   if (keys['s'] || keys['arrowdown']) p.y += speed;
   if (keys['a'] || keys['arrowleft']) p.x -= speed;
   if (keys['d'] || keys['arrowright']) p.x += speed;
 
-  p.x = Math.max(40, Math.min(3000 - 40, p.x));
-  p.y = Math.max(40, Math.min(2000 - 40, p.y));
+  // Colisão com prédios
+  let canMoveX = true, canMoveY = true;
+  const newX = p.x + (keys['a'] || keys['arrowleft'] ? -speed : keys['d'] || keys['arrowright'] ? speed : 0);
+  const newY = p.y + (keys['w'] || keys['arrowup'] ? -speed : keys['s'] || keys['arrowdown'] ? speed : 0);
+
+  if (isColliding(newX, p.y)) canMoveX = false;
+  if (isColliding(p.x, newY)) canMoveY = false;
+
+  if (canMoveX) p.x = Math.max(60, Math.min(MAP_WIDTH - 60, newX));
+  if (canMoveY) p.y = Math.max(60, Math.min(MAP_HEIGHT - 60, newY));
 
   socket.emit('playerMovement', { x: p.x, y: p.y });
+}
+
+function isColliding(x, y) {
+  for (let obs of obstacles) {
+    if (x + 18 > obs.x && x - 18 < obs.x + obs.w &&
+        y + 25 > obs.y && y - 25 < obs.y + obs.h) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function draw() {
@@ -95,79 +104,53 @@ function draw() {
   const offsetX = me.x - canvas.width / 2;
   const offsetY = me.y - canvas.height / 2;
 
-  // Chão
-  ctx.fillStyle = '#1a3a2a';
+  ctx.fillStyle = '#1a1a1a';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // Grama
-  ctx.fillStyle = '#0f2a1f';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  // Ruas
+  ctx.strokeStyle = '#444';
+  ctx.lineWidth = 80;
+  ctx.beginPath();
+  ctx.moveTo(0 - offsetX, 1150 - offsetY);
+  ctx.lineTo(MAP_WIDTH - offsetX, 1150 - offsetY);
+  ctx.stroke();
 
-  // Esconderijos
-  hideSpots.forEach(spot => {
-    const sx = spot.x - offsetX;
-    const sy = spot.y - offsetY;
-
-    if (spot.type === 'grass') {
-      ctx.fillStyle = '#1e5a3a';
-      ctx.fillRect(sx, sy, spot.w, spot.h);
-    } else {
-      ctx.fillStyle = '#554433';
-      ctx.fillRect(sx, sy, spot.w, spot.h);
-      ctx.fillStyle = '#aa6644';
-      ctx.fillRect(sx + 15, sy + 8, spot.w - 30, 45);
-    }
+  // Prédios
+  obstacles.forEach(obs => {
+    const sx = obs.x - offsetX;
+    const sy = obs.y - offsetY;
+    ctx.fillStyle = obs.color || '#2c3e50';
+    ctx.fillRect(sx, sy, obs.w, obs.h);
   });
 
-  // Desenhar jogadores
+  // Jogadores
   Object.keys(players).forEach(id => {
     const p = players[id];
     const sx = p.x - offsetX;
     const sy = p.y - offsetY;
 
-    const isTagger = (id === currentTagger);
-    const isHiding = isInsideHideSpot(p);
+    const isPolice = (id === currentTagger);
 
-    let alpha = (isHiding && !isTagger) ? 0.35 : 1.0;
-    ctx.globalAlpha = alpha;
+    if (isPolice) {
+      ctx.fillStyle = '#003366';
+      ctx.fillRect(sx - 14, sy - 15, 28, 46);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(sx - 14, sy - 10, 28, 15);
+    } else {
+      ctx.fillStyle = '#ff8800';
+      ctx.fillRect(sx - 13, sy - 13, 26, 42);
+    }
 
-    // Corpo
-    ctx.fillStyle = isTagger ? '#ff2222' : '#4488ff';
-    ctx.fillRect(sx - 12, sy - 8, 24, 36);
-
-    // Cabeça
     ctx.fillStyle = '#ffddaa';
     ctx.beginPath();
-    ctx.arc(sx, sy - 26, 13, 0, Math.PI * 2);
+    ctx.arc(sx, sy - 30, 13, 0, Math.PI * 2);
     ctx.fill();
 
-    // Olhos
-    ctx.fillStyle = '#111';
-    ctx.beginPath();
-    ctx.arc(sx - 5, sy - 28, 4, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(sx + 5, sy - 28, 4, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.globalAlpha = 1.0;
-
-    // === NOME CORRIGIDO ===
-    ctx.fillStyle = isTagger ? '#ffff00' : 'white';
-    ctx.font = 'bold 17px Arial';
+    ctx.fillStyle = isPolice ? '#00eeff' : 'white';
+    ctx.font = 'bold 18px Arial';
     ctx.textAlign = 'center';
-    ctx.fillText(p.nickname || '???', sx, sy - 52);
+    ctx.fillText(p.nickname, sx, sy - 60);
   });
-}
-
-function isInsideHideSpot(player) {
-  for (let spot of hideSpots) {
-    if (player.x > spot.x && player.x < spot.x + spot.w &&
-        player.y > spot.y && player.y < spot.y + spot.h) {
-      return true;
-    }
-  }
-  return false;
 }
 
 function gameLoop() {

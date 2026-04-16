@@ -1,53 +1,90 @@
+require('dotenv').config();
 const express = require('express');
 const http = require('http');
 const path = require('path');
 const { Server } = require('socket.io');
+const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
 
+app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+// Conexão com MongoDB
+mongoose.connect(process.env.MONGO_URI)
+  .then(() => console.log('✅ MongoDB conectado'))
+  .catch(err => console.log('Erro MongoDB:', err));
+
+// Schema do Usuário
+const userSchema = new mongoose.Schema({
+  username: { type: String, unique: true, required: true },
+  password: { type: String, required: true },
+  winsAsPolice: { type: Number, default: 0 },
+  winsAsThief: { type: Number, default: 0 },
+  totalGames: { type: Number, default: 0 }
 });
+
+const User = mongoose.model('User', userSchema);
+
+// Rotas de Autenticação
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const user = new User({ username, password: hashedPassword });
+    await user.save();
+
+    res.json({ success: true, message: "Conta criada com sucesso!" });
+  } catch (err) {
+    res.json({ success: false, message: "Usuário já existe" });
+  }
+});
+
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    const user = await User.findOne({ username });
+
+    if (!user || !(await bcrypt.compare(password, user.password))) {
+      return res.json({ success: false, message: "Usuário ou senha incorretos" });
+    }
+
+    const token = jwt.sign({ id: user._id, username }, process.env.JWT_SECRET, { expiresIn: '2h' });
+
+    res.json({ success: true, token, username });
+  } catch (err) {
+    res.json({ success: false, message: "Erro no login" });
+  }
+});
+
+// Servir as páginas
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+app.get('/lobby.html', (req, res) => res.sendFile(path.join(__dirname, 'public', 'lobby.html')));
+app.get('/game.html', (req, res) => res.sendFile(path.join(__dirname, 'public', 'game.html')));
 
 const players = {};
 let currentTagger = null;
 
+// Socket.io - Jogo
 io.on('connection', (socket) => {
-  console.log('✅ Jogador conectado:', socket.id);
+  console.log('Jogador conectado:', socket.id);
 
-  players[socket.id] = {
-    x: 500 + Math.random() * 600,
-    y: 500 + Math.random() * 400,
-    size: 22,
-    nickname: "Jogador",
-    color: "#4488ff"
-  };
+  socket.on('joinGame', (username) => {
+    players[socket.id] = {
+      username: username,
+      x: 600 + Math.random() * 1000,
+      y: 600 + Math.random() * 500
+    };
 
-  // === PRIMEIRO JOGADOR VIRA PEGADOR ===
-  if (!currentTagger) {
-    currentTagger = socket.id;
-    players[socket.id].color = "#ff2222";
-    console.log("👑 Primeiro pegador definido:", socket.id);
-  }
+    if (!currentTagger) currentTagger = socket.id;
 
-  // Envia estado completo para o novo jogador
-  socket.emit('currentState', { 
-    players: players, 
-    currentTagger: currentTagger 
-  });
-
-  // Avisa os outros sobre o novo jogador
-  socket.broadcast.emit('newPlayer', socket.id, players[socket.id]);
-
-  socket.on('setNickname', (name) => {
-    if (players[socket.id]) {
-      players[socket.id].nickname = name;
-      io.emit('playerMoved', socket.id, players[socket.id]); // força atualização visual
-    }
+    socket.emit('currentState', { players, currentTagger });
+    socket.broadcast.emit('newPlayer', socket.id, players[socket.id]);
   });
 
   socket.on('playerMovement', (data) => {
@@ -55,9 +92,8 @@ io.on('connection', (socket) => {
       players[socket.id].x = data.x;
       players[socket.id].y = data.y;
 
-      // Verifica colisão se for o pegador
       if (socket.id === currentTagger) {
-        checkCollisions(socket.id);
+        checkTagCollision(socket.id);
       }
 
       io.emit('playerMoved', socket.id, players[socket.id]);
@@ -65,45 +101,27 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
-    const wasTagger = currentTagger === socket.id;
-    delete players[socket.id];
-    io.emit('playerDisconnected', socket.id);
-
-    // Se o pegador saiu, escolhe outro
-    if (wasTagger && Object.keys(players).length > 0) {
-      const ids = Object.keys(players);
+    if (currentTagger === socket.id && Object.keys(players).length > 1) {
+      const ids = Object.keys(players).filter(id => id !== socket.id);
       currentTagger = ids[Math.floor(Math.random() * ids.length)];
-      players[currentTagger].color = "#ff2222";
       io.emit('newTagger', currentTagger);
-      console.log("Novo pegador (desconexão):", currentTagger);
     }
+    delete players[socket.id];
   });
 });
 
-// Verifica se o pegador tocou alguém
-function checkCollisions(taggerId) {
+function checkTagCollision(taggerId) {
   const tagger = players[taggerId];
-  if (!tagger) return;
-
   Object.keys(players).forEach(id => {
     if (id === taggerId) return;
-
-    const other = players[id];
-    const dist = Math.hypot(tagger.x - other.x, tagger.y - other.y);
-
-    if (dist < 38) {   // distância para pegar
-      // Troca o pegador
-      tagger.color = "#4488ff";
+    const dist = Math.hypot(tagger.x - players[id].x, tagger.y - players[id].y);
+    if (dist < 45) {
       currentTagger = id;
-      other.color = "#ff2222";
-
       io.emit('newTagger', currentTagger);
-      console.log(`🔄 Pegador trocado! Novo: ${id}`);
     }
   });
 }
 
-server.listen(3000, '0.0.0.0', () => {
-  console.log('🚀 Servidor rodando → http://localhost:3000');
-  console.log('O primeiro jogador que entrar será o Pegador!');
+server.listen(process.env.PORT || 3000, () => {
+  console.log(`🚀 Servidor rodando em http://localhost:3000`);
 });

@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Lobby - Polícia e Ladrão</title>
+  <style>
+    body { margin:0; padding:0; background:#0a1a0f; color:white; font-family:Arial; text-align:center; }
+    .container { margin-top: 100px; }
+    h1 { color: #ffdd00; }
+    button {
+      padding: 18px 60px; font-size: 24px; background: #ff4444; color: white;
+      border: none; border-radius: 12px; cursor: pointer; margin-top: 30px;
+    }
+    button:hover { background: #ff6666; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Bem-vindo, <span id="username"></span>!</h1>
+    <p>Escolha uma sala para entrar na partida</p>
+    <button onclick="enterGame()">ENTRAR NA PARTIDA</button>
+  </div>
+
+  <script>
+    const username = localStorage.getItem('username');
+    document.getElementById('username').textContent = username || "Jogador";
+
+    function enterGame() {
+      window.location.href = '/game.html';
+    }
+  </script>
+</body>
+</html>

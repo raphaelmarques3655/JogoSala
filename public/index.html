@@ -2,39 +2,101 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <title>Esconde-Esconde Multiplayer</title>
+  <title>Polícia e Ladrão - Login</title>
   <style>
-    body { margin:0; padding:0; background:#0a1a0f; overflow:hidden; font-family:Arial; color:white; }
-    canvas { display:block; position:absolute; top:0; left:0; }
-
-    #startScreen {
-      position:absolute; top:0; left:0; width:100%; height:100%;
-      background:rgba(10, 30, 20, 0.97); display:flex; flex-direction:column;
-      align-items:center; justify-content:center; z-index:300;
+    body {
+      margin: 0; padding: 0; background: linear-gradient(#0a1a0f, #112233);
+      font-family: Arial, sans-serif; color: white; height: 100vh;
+      display: flex; align-items: center; justify-content: center;
     }
-    h1 { font-size:52px; color:#ffdd44; margin-bottom:10px; }
-    input { padding:16px; font-size:24px; width:340px; margin:20px 0; border-radius:10px; text-align:center; }
-    button { padding:16px 60px; font-size:24px; background:#ff4444; color:white; border:none; border-radius:10px; cursor:pointer; }
-    button:hover { background:#ff6666; }
+    .container {
+      background: rgba(0,0,0,0.85); padding: 40px; border-radius: 15px;
+      width: 400px; text-align: center;
+    }
+    h1 { color: #ffdd00; margin-bottom: 5px; }
+    input {
+      width: 100%; padding: 14px; margin: 10px 0; border-radius: 8px;
+      border: none; background: #222; color: white; font-size: 16px;
+    }
+    button {
+      width: 100%; padding: 15px; margin: 15px 0; border: none;
+      border-radius: 8px; background: #ff4444; color: white;
+      font-size: 18px; font-weight: bold; cursor: pointer;
+    }
+    button:hover { background: #ff6666; }
+    .toggle { color: #00ccff; cursor: pointer; margin-top: 10px; }
+    .error { color: #ff6666; margin-top: 10px; }
   </style>
 </head>
 <body>
+  <div class="container">
+    <h1>🚔 Polícia e Ladrão</h1>
+    <h2 id="formTitle">Entrar na Conta</h2>
 
-  <div id="startScreen">
-    <h1>🙈 Esconde-Esconde</h1>
-    <p>Digite seu nome:</p>
-    <input type="text" id="nicknameInput" placeholder="Seu nome" maxlength="15">
-    <button onclick="startGame()">JOGAR</button>
+    <input type="text" id="username" placeholder="Nome de usuário">
+    <input type="email" id="email" placeholder="Email (apenas no cadastro)">
+    <input type="password" id="password" placeholder="Senha">
+
+    <button id="submitBtn">Entrar</button>
+    <p class="toggle" id="toggleText">Não tem conta? Cadastre-se</p>
+    <p class="error" id="errorMsg"></p>
   </div>
 
-  <div id="hud" style="display:none; position:absolute; top:15px; left:15px; background:rgba(0,0,0,0.75); padding:12px 20px; border-radius:10px; z-index:100; font-size:18px;">
-    <strong>Esconde-Esconde</strong><br>
-    Você é: <span id="role" style="font-weight:bold; color:#44ff88;">Fugitivo</span>
-  </div>
+  <script>
+    let isLogin = true;
+    const toggleText = document.getElementById('toggleText');
+    const formTitle = document.getElementById('formTitle');
+    const submitBtn = document.getElementById('submitBtn');
+    const emailInput = document.getElementById('email');
+    const errorMsg = document.getElementById('errorMsg');
 
-  <canvas id="game"></canvas>
+    toggleText.addEventListener('click', () => {
+      isLogin = !isLogin;
+      formTitle.textContent = isLogin ? "Entrar na Conta" : "Criar Conta";
+      submitBtn.textContent = isLogin ? "Entrar" : "Cadastrar";
+      toggleText.textContent = isLogin ? 
+        "Não tem conta? Cadastre-se" : "Já tem conta? Entrar";
+      
+      emailInput.style.display = isLogin ? "none" : "block";
+    });
 
-  <script src="/socket.io/socket.io.js"></script>
-  <script src="client.js"></script>
+    submitBtn.addEventListener('click', async () => {
+      const username = document.getElementById('username').value.trim();
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+
+      errorMsg.textContent = '';
+
+      if (!username || !password) {
+        return errorMsg.textContent = "Preencha usuário e senha";
+      }
+      if (!isLogin && !email) {
+        return errorMsg.textContent = "Email é obrigatório no cadastro";
+      }
+
+      const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register';
+      const body = isLogin ? { username, password } : { username, email, password };
+
+      try {
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+
+        const data = await res.json();
+
+        if (data.success) {
+          localStorage.setItem('token', data.token);
+          localStorage.setItem('username', username);
+          window.location.href = '/lobby.html';
+        } else {
+          errorMsg.textContent = data.message || "Erro ao processar";
+        }
+      } catch (err) {
+        errorMsg.textContent = "Erro de conexão com o servidor";
+      }
+    });
+  </script>
 </body>
 </html>
